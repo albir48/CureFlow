@@ -1,0 +1,622 @@
+{
+  "info": {
+    "_postman_id": "6e7a781c-5a74-4d56-b40f-a8d8f6ef0f7c",
+    "name": "CureFlow API Hardened",
+    "description": "Security-hardened CureFlow API test collection (JWT + payment callback signature checks).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth - Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/register.php",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "register.php"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Register success', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('success');",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "if (json.data && json.data.token) {",
+              "  pm.environment.set('patientToken', json.data.token);",
+              "}",
+              "if (json.data && json.data.patient_id) {",
+              "  pm.environment.set('patientId', String(json.data.patient_id));",
+              "}",
+              "if (json.data && json.data.user_id) {",
+              "  pm.environment.set('userId', String(json.data.user_id));",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login.php",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login.php"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Login success', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('success');",
+              "  pm.expect(json.data.token).to.be.a('string');",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "pm.environment.set('patientToken', json.data.token);",
+              "pm.environment.set('userId', String(json.data.user_id));",
+              "if (json.data.patient_id) {",
+              "  pm.environment.set('patientId', String(json.data.patient_id));",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth - Generate Local Admin JWT",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "function toBase64UrlUtf8(str) {",
+              "  return CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(str))",
+              "    .replace(/\\+/g, '-')",
+              "    .replace(/\\//g, '_')",
+              "    .replace(/=+$/g, '');",
+              "}",
+              "",
+              "function toBase64UrlWordArray(wordArray) {",
+              "  return CryptoJS.enc.Base64.stringify(wordArray)",
+              "    .replace(/\\+/g, '-')",
+              "    .replace(/\\//g, '_')",
+              "    .replace(/=+$/g, '');",
+              "}",
+              "",
+              "const secret = pm.environment.get('jwtSecret') || 'dev-secret';",
+              "const now = Math.floor(Date.now() / 1000);",
+              "const header = { alg: 'HS256', typ: 'JWT' };",
+              "const payload = {",
+              "  user_id: 1,",
+              "  role: 'admin',",
+              "  email: 'admin@local.test',",
+              "  iat: now,",
+              "  exp: now + 3600",
+              "};",
+              "",
+              "const encodedHeader = toBase64UrlUtf8(JSON.stringify(header));",
+              "const encodedPayload = toBase64UrlUtf8(JSON.stringify(payload));",
+              "const signingInput = `${encodedHeader}.${encodedPayload}`;",
+              "const signature = CryptoJS.HmacSHA256(signingInput, secret);",
+              "const encodedSignature = toBase64UrlWordArray(signature);",
+              "const token = `${signingInput}.${encodedSignature}`;",
+              "",
+              "pm.environment.set('adminToken', token);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Admin token generated', function () {",
+              "  const token = pm.environment.get('adminToken');",
+              "  pm.expect(token).to.be.a('string');",
+              "  pm.expect(token.split('.').length).to.eql(3);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/doctor/get_doctors.php",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "doctor",
+            "get_doctors.php"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Doctor - Get Doctors",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/doctor/get_doctors.php",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "doctor",
+            "get_doctors.php"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Doctors fetched', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('success');",
+              "  pm.expect(json.data).to.be.an('array');",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "if (Array.isArray(json.data) && json.data.length > 0) {",
+              "  pm.environment.set('doctorId', String(json.data[0].doctor_id));",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token - Create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"patient_id\": {{patientId}},\n  \"doctor_id\": {{doctorId}},\n  \"date\": \"2026-04-20\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/token/create_token.php",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token",
+            "create_token.php"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Token created', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql('success');",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "if (json.data && json.data.token_id) {",
+              "  pm.environment.set('tokenId', String(json.data.token_id));",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token - Get Patient Tokens",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/token/get_tokens.php?patient_id={{patientId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token",
+            "get_tokens.php"
+          ],
+          "query": [
+            {
+              "key": "patient_id",
+              "value": "{{patientId}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Token - Negative Ownership",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/token/get_tokens.php?patient_id=999999",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "token",
+            "get_tokens.php"
+          ],
+          "query": [
+            {
+              "key": "patient_id",
+              "value": "999999"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Ownership denied', function () {",
+              "  pm.expect([403, 401]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payment - Initiate",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token_id\": {{tokenId}}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/payment/initiate.php",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "payment",
+            "initiate.php"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Payment initiated', function () {",
+              "  pm.expect([200, 422]).to.include(pm.response.code);",
+              "  const json = pm.response.json();",
+              "  if (pm.response.code === 200) {",
+              "    pm.expect(json.status).to.eql('success');",
+              "    pm.expect(json.data.payment_id).to.exist;",
+              "  } else {",
+              "    pm.expect(json.status).to.eql('error');",
+              "  }",
+              "});",
+              "",
+              "const json = pm.response.json();",
+              "if (json.data && json.data.payment_id) {",
+              "  pm.environment.set('paymentId', String(json.data.payment_id));",
+              "}",
+              "if (json.data && json.data.bkashURL) {",
+              "  pm.environment.set('bkashURL', json.data.bkashURL);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payment - Callback (Signed)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const paymentID = pm.environment.get('gatewayPaymentID') || '';",
+              "const status = pm.environment.get('callbackStatus') || 'success';",
+              "const secret = pm.environment.get('webhookSecret') || '';",
+              "const payload = `${paymentID}|${status}`;",
+              "const sig = CryptoJS.HmacSHA256(payload, secret).toString(CryptoJS.enc.Hex);",
+              "pm.environment.set('calculatedWebhookSignature', sig);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Webhook-Signature",
+            "value": "{{calculatedWebhookSignature}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/payment/callback.php?paymentID={{gatewayPaymentID}}&status={{callbackStatus}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "payment",
+            "callback.php"
+          ],
+          "query": [
+            {
+              "key": "paymentID",
+              "value": "{{gatewayPaymentID}}"
+            },
+            {
+              "key": "status",
+              "value": "{{callbackStatus}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Notification - Get",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/notification/get_notifications.php?patient_id={{patientId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "notification",
+            "get_notifications.php"
+          ],
+          "query": [
+            {
+              "key": "patient_id",
+              "value": "{{patientId}}"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "if (Array.isArray(json.data) && json.data.length > 0) {",
+              "  pm.environment.set('notificationId', String(json.data[0].notification_id));",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notification - Mark Read",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{patientToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/notification/mark_read.php?notification_id={{notificationId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "notification",
+            "mark_read.php"
+          ],
+          "query": [
+            {
+              "key": "notification_id",
+              "value": "{{notificationId}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Payment DOC - Fake Success (Admin Only)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}"
+          },
+          {
+            "key": "X-Debug-Secret",
+            "value": "{{paymentDebugSecret}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/payment/paymentDOC/fake_success.php?payment_id={{paymentId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "payment",
+            "paymentDOC",
+            "fake_success.php"
+          ],
+          "query": [
+            {
+              "key": "payment_id",
+              "value": "{{paymentId}}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost/CureFlow/CureFlow_API"
+    },
+    {
+      "key": "testEmail",
+      "value": ""
+    },
+    {
+      "key": "testPassword",
+      "value": "test12345"
+    },
+    {
+      "key": "jwtSecret",
+      "value": "cureflow-dev-secret-change-me"
+    },
+    {
+      "key": "patientToken",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "patientId",
+      "value": ""
+    },
+    {
+      "key": "doctorId",
+      "value": ""
+    },
+    {
+      "key": "tokenId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    },
+    {
+      "key": "notificationId",
+      "value": ""
+    },
+    {
+      "key": "gatewayPaymentID",
+      "value": ""
+    },
+    {
+      "key": "callbackStatus",
+      "value": "success"
+    },
+    {
+      "key": "webhookSecret",
+      "value": ""
+    },
+    {
+      "key": "paymentDebugSecret",
+      "value": ""
+    },
+    {
+      "key": "calculatedWebhookSignature",
+      "value": ""
+    },
+    {
+      "key": "bkashURL",
+      "value": ""
+    }
+  ]
+}
